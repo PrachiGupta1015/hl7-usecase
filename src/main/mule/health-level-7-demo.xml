@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:jms="http://www.mulesoft.org/schema/mule/jms" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:hl7="http://www.mulesoft.org/schema/mule/hl7" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/hl7 http://www.mulesoft.org/schema/mule/hl7/current/mule-hl7.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="8cb0fc5f-1a59-4521-8af4-4818e9888679" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<hl7:config name="HL7_EDI_Config" doc:name="HL7 EDI Config" doc:id="0f4bd77a-5175-4717-bc1d-3586935a2497" >
+		<hl7:schemas >
+			<hl7:schema value="/hl7/v2_3_1/ADT_A04.esl" />
+		</hl7:schemas>
+	</hl7:config>
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="47ef08f5-6d15-4f37-9937-558cb47c7d00" >
+		<salesforce:basic-connection username="jaididwania@gmail.com.admin" password="Jaikishan@2022" securityToken="vpuijasb6sschWGI8ZcFhzq8" url="https://login.salesforce.com/services/Soap/u/56.0" />
+	</salesforce:sfdc-config>
+	<flow name="health-level-7-demoFlow" doc:id="ea04d637-4c49-4e1c-9215-76ab35920fbf" >
+		<http:listener doc:name="Listener" doc:id="feadc4ce-296f-4ac0-80c9-db3ff96a5777" config-ref="HTTP_Listener_config" path="/patient" allowedMethods="POST">
+			<http:response >
+				<http:body ><![CDATA[#[%dw 2.0
+output application/json
+--- 
+{
+	accepted: true
+}]]]></http:body>
+			</http:response>
+		</http:listener>
+		<hl7:read doc:name="Read ADT_A04" doc:id="1dcdc0ec-eb87-4e19-9f1a-a07ae9b4bcad" config-ref="HL7_EDI_Config"/>
+		<logger level="INFO" doc:name="Hl7 Tranformation Successful" doc:id="9d7cea4e-8bae-4f28-ae8d-023cb423b2c2" message="Hl7 Tranformation Successful" />
+		<ee:transform doc:name="patient-details" doc:id="801ab8c0-8b62-4aca-b5b4-34c150c2bca0">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="patient_details"><![CDATA[%dw 2.0
+import * from dw::core::Strings
+import * from dw::core::Dates
+output application/json
+var dob = payload.Data.ADT_A04.PID.'PID-07'.'TS-01'
+var year_of_dob = substring(dob,0,4) as Number
+var month_of_dob = substring(dob,4,6) as Number 
+var day_of_dob = substring(dob,6,8) as Number
+---
+{
+	id: payload.Data.ADT_A04.PID.'PID-03'.'CX-01' joinBy "",
+	first_name : payload.Data.ADT_A04.PID.'PID-05'.'XPN-02' joinBy "",
+	last_name: payload.Data.ADT_A04.PID.'PID-05'.'XPN-01'.'FN-01' joinBy "",
+	suffix: payload.Data.ADT_A04.PID.'PID-05'.'XPN-04' joinBy "",
+	marital_status: payload.Data.ADT_A04.PID.'PID-16'.'CE_0002-01',
+	home_phone: payload.Data.ADT_A04.PID.'PID-13'.'XTN-01' joinBy "",
+	country_code: payload.Data.ADT_A04.PID.'PID-12',
+	state: payload.Data.ADT_A04.PID.'PID-11'.'XAD-04' joinBy "",
+	zip_code: payload.Data.ADT_A04.PID.'PID-11'.'XAD-05' joinBy "",
+	city: payload.Data.ADT_A04.PID.'PID-11'.'XAD-03' joinBy "",
+	street: payload.Data.ADT_A04.PID.'PID-11'.'XAD-01' joinBy "",
+	driver_licnese: payload.Data.ADT_A04.PID.'PID-20'.'DLN-01' ,
+	dl_issuing_country: payload.Data.ADT_A04.PID.'PID-20'.'DLN-02',
+	gender: substring(payload.Data.ADT_A04.PID.'PID-08',0,1),
+	ssn: payload.Data.ADT_A04.PID.'PID-19',
+	date_of_birth: date({year:year_of_dob, month:month_of_dob, day:day_of_dob}) as Date{format: 'yyyy-MM-dd'} 
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="patient-visit-details" doc:id="39bcea51-5477-48ce-914f-34d920dfce26">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="patient_visit_details"><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+import * from dw::core::Dates
+var date_time = payload.Data.ADT_A04.PV1.'PV1-44'.'TS-01'
+var year_date_time = substring(date_time,0,4) as Number
+var month_of_date_time = substring(date_time,4,6) as Number 
+var day_of_date_time = substring(date_time,6,8) as Number
+var hour_of_date_time = substring(date_time,8,10) as Number
+var min_of_date_time = substring(date_time,10,12) as Number
+
+---
+{
+	patient_id: vars.patient_details.id,
+	patient_class: payload.Data.ADT_A04.PV1.'PV1-02',
+	referring_doctor_first_name: payload.Data.ADT_A04.PV1.'PV1-08'.'XCN-03' joinBy "",
+	referring_doctor_id: payload.Data.ADT_A04.PV1.'PV1-08'.'XCN-01' joinBy "",
+	referring_doctor_prefix: payload.Data.ADT_A04.PV1.'PV1-08'.'XCN-06' joinBy "",
+	referring_doctor_last_name: payload.Data.ADT_A04.PV1.'PV1-08'.'XCN-02'.'FN-01' joinBy "",
+	referring_doctor_middle_name: payload.Data.ADT_A04.PV1.'PV1-08'.'XCN-04' joinBy "",
+	visit_id: payload.Data.ADT_A04.PV1.'PV1-19'.'CX-01',
+	admit_date_time: dateTime({year:year_date_time, month:month_of_date_time,day:day_of_date_time ,
+		hour: hour_of_date_time, minutes: min_of_date_time, seconds: 0, timeZone: |+00:00|
+	})
+	
+}
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<salesforce:create type="Patient__c" doc:name="createPatient" doc:id="7a290be2-e47c-40e3-91c6-21fd108c806b" config-ref="Salesforce_Config" >
+			<salesforce:records ><![CDATA[#[%dw 2.0
+output application/java
+---
+[{
+	Name: vars.patient_details.first_name ++" "++ vars.patient_details.last_name,
+	patient_id__c: vars.patient_details.id,
+	First_Name__c: vars.patient_details.first_name,
+	Last_Name__c: vars.patient_details.last_name,
+	Suffix__c: vars.patient_details.suffix,
+	Marital_Status__c: vars.patient_details.marital_status as String,
+	Home_Phone__c: vars.patient_details.home_phone,
+	Country_Code__c: vars.patient_details.country_code as String,
+	State__c: vars.patient_details.state,
+	Zip_Code__c: vars.patient_details.zip_code,
+	City__c: vars.patient_details.city,
+	Street__c: vars.patient_details.street,
+	Driver_License_Number__c: vars.patient_details.driver_licnese as String,
+	Driver_License_Issuing_Country__c: vars.patient_details.dl_issuing_country as String,
+	Gender__c: vars.patient_details.gender as String,
+	SSN__c: vars.patient_details.ssn as String,
+    Date_of_Birth__c: vars.patient_details.date_of_birth as Date{format: 'yyyy-MM-dd'}
+
+}]]]]></salesforce:records>
+		</salesforce:create>
+		<salesforce:query doc:name="queryId&amp;NameForLookUpRel" doc:id="44c066ff-2ce4-42b3-86f8-fad005bbf57d" config-ref="Salesforce_Config" target="p_id">
+			<salesforce:salesforce-query ><![CDATA[SELECT id,Name from Patient__c where patient_id__c =':p_id']]></salesforce:salesforce-query>
+			<salesforce:parameters ><![CDATA[#[p_id : vars.patient_details.id]]]></salesforce:parameters>
+		</salesforce:query>
+		<salesforce:create type="Patient_Visit__c" doc:name="createPatientVisit" doc:id="b6c3444d-496e-4206-b34a-6ddf072beed7" config-ref="Salesforce_Config" >
+			<salesforce:records ><![CDATA[#[%dw 2.0
+output application/java
+---
+[{
+	Name: vars.p_id[0][2],
+	patient_id__c: vars.p_id[0][0],
+	Patient_Class__c: vars.patient_visit_details.patient_class,
+	Referring_Doctor_First_Name__c: vars.patient_visit_details.referring_doctor_first_name,
+	Referring_Doctor_Id__c: vars.patient_visit_details.referring_doctor_id,
+	Referring_Doctor_Last_Name__c: vars.patient_visit_details.referring_doctor_last_name,
+	Referring_Doctor_Middle_Name__c: vars.patient_visit_details.referring_doctor_middle_name,
+	Referring_Doctor_Prefix__c: vars.patient_visit_details.referring_doctor_prefix,
+	Visit_Id__c: vars.patient_visit_details.visit_id as String,
+	Admit_Date_Time__c: vars.patient_visit_details.admit_date_time as DateTime //{format: "yyyy-MM-dd'T'HH:mm:ss.SSS+HH:mm"}
+
+	
+}]]]]></salesforce:records>
+		</salesforce:create>
+		<logger level="INFO" doc:name="Data Insertion Successful" doc:id="d07e7c8e-cf12-4017-b60c-9005f3407cf1" message="Data Insertion Successful"/>
+	</flow>
+</mule>
